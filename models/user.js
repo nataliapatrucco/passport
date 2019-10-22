@@ -1,5 +1,6 @@
-const S = requiere("sequelize");
+const S = require("sequelize");
 const db = require("./index");
+const crypto = require("crypto");
 
 class User extends S.Model {}
 User.init(
@@ -13,26 +14,33 @@ User.init(
     },
     password: {
       type: S.STRING,
-      allowNull: false,
-      set() {
-        this.setDataValue("password").this.getDataValue("salt");
-      }
+      allowNull: false
     },
     salt: {
-      type: S.STRING,
-      set() {
-        return crypto.randomBytes(20).toString("hex");
-      }
+      type: S.STRING
     }
   },
   { sequelize: db, modelName: "user" }
 );
 
-User.prototype.validate = password => {
-  crypto
-    .createHmac("sha1", this.salt)
-    .update(password)
-    .digest("hex") === this.password;
+User.prototype.generateSalt = function() {
+  return crypto.randomBytes(20).toString("hex");
 };
 
-module.exports = { User };
+User.prototype.hashPassword = function(password) {
+  return crypto
+    .createHmac("sha1", this.salt)
+    .update(password)
+    .digest("hex");
+};
+
+User.addHook("beforeCreate", user => {
+  user.salt = user.generateSalt();
+  user.password = user.hashPassword(user.password);
+});
+
+User.prototype.validPassword = function(password) {
+  return this.password === this.hashPassword(password);
+};
+
+module.exports = User;
